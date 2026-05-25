@@ -1,0 +1,509 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Calculadora de Presupuestos</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+</head>
+<body class="bg-gray-50 min-h-screen p-4 md:p-8">
+    <div class="max-w-4xl mx-auto bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
+        <h1 class="text-2xl font-bold text-gray-800 mb-2">Calculadora de Presupuestos</h1>
+        <p class="text-sm text-gray-500 mb-6">Sube tu archivo Excel o CSV para empezar a cotizar de forma automática con packs automáticos.</p>
+        
+        <!-- Zona de Carga de Archivo -->
+        <div class="mb-6 p-6 border-2 border-dashed border-gray-200 rounded-xl text-center bg-gray-50 hover:bg-gray-100 transition duration-150">
+            <input type="file" id="excelFile" accept=".csv, .xlsx" class="hidden">
+            <label for="excelFile" class="cursor-pointer flex flex-col items-center justify-center space-y-2">
+                <svg class="w-8 h-8 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path>
+                </svg>
+                <span class="text-blue-600 font-semibold hover:text-blue-700 text-sm md:text-base">
+                    Selecciona o arrastra tu archivo CSV/Excel
+                </span>
+                <span class="text-xs text-gray-400" id="fileNameDisplay">Formatos permitidos: .xlsx, .csv</span>
+            </label>
+        </div>
+
+        <!-- Instrucciones de columnas (visible inicialmente) -->
+        <div id="instructions" class="mb-8 p-4 bg-blue-50 border border-blue-100 text-blue-800 rounded-xl text-xs md:text-sm space-y-2">
+            <p class="font-bold flex items-center gap-1">💡 Estructura requerida del archivo Excel:</p>
+            <p class="text-xs text-blue-700">Tu archivo debe contener las siguientes columnas (exactamente con estos nombres):</p>
+            <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2 font-mono text-[11px] bg-white/65 p-2.5 rounded-lg border border-blue-100">
+                <div>• Categoria</div>
+                <div>• Categoria 2</div>
+                <div>• Nombre</div>
+                <div>• Precio</div>
+                <div>• Color 1 ... Color 7</div>
+                <div>• Adicional 1 / 2</div>
+                <div>• Coste adicional 1 / 2</div>
+            </div>
+        </div>
+
+        <!-- Formulario de Selección -->
+        <div id="calculatorForm" class="hidden space-y-6 bg-gray-50/50 p-6 rounded-2xl border border-gray-100">
+            <h3 class="text-lg font-bold text-gray-800 border-b pb-2">Configurar Producto</h3>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700">Categoría</label>
+                    <select id="cat1" class="w-full mt-1 p-2 bg-white border border-gray-200 rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:outline-none"></select>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700">Categoría 2</label>
+                    <select id="cat2" class="w-full mt-1 p-2 bg-white border border-gray-200 rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:outline-none"></select>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700">Nombre (Medida)</label>
+                    <select id="nombre" class="w-full mt-1 p-2 bg-white border border-gray-200 rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:outline-none"></select>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Cantidad</label>
+                    <div class="flex items-center h-10 w-36 border border-gray-200 rounded-lg bg-white shadow-sm overflow-hidden mt-1">
+                        <button type="button" onclick="decrementQty()" class="w-12 h-full flex items-center justify-center text-gray-600 hover:bg-gray-100 hover:text-gray-800 font-bold text-xl select-none transition duration-150 border-r border-gray-200">
+                            -
+                        </button>
+                        <input type="number" id="cantidad" min="1" value="1" class="w-12 h-full text-center font-bold text-gray-800 bg-transparent focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none">
+                        <button type="button" onclick="incrementQty()" class="w-12 h-full flex items-center justify-center text-gray-600 hover:bg-gray-100 hover:text-gray-800 font-bold text-xl select-none transition duration-150 border-l border-gray-200">
+                            +
+                        </button>
+                    </div>
+                </div>
+                <div id="colorWrapper" class="hidden">
+                    <label class="block text-sm font-medium text-gray-700">Color</label>
+                    <select id="color" class="w-full mt-1 p-2 bg-white border border-gray-200 rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:outline-none"></select>
+                </div>
+                <div id="ad1Wrapper" class="hidden">
+                    <label id="lblAd1" class="block text-sm font-medium text-gray-700">Adicional 1</label>
+                    <select id="ad1" class="w-full mt-1 p-2 bg-white border border-gray-200 rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:outline-none"></select>
+                </div>
+                <div id="ad2Wrapper" class="hidden">
+                    <label id="lblAd2" class="block text-sm font-medium text-gray-700">Adicional 2</label>
+                    <select id="ad2" class="w-full mt-1 p-2 bg-white border border-gray-200 rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:outline-none"></select>
+                </div>
+            </div>
+            <button onclick="addToCart()" id="addBtn" class="w-full bg-blue-600 text-white py-3 rounded-lg font-bold hover:bg-blue-700 transition duration-150 shadow-md hidden flex justify-center items-center gap-2">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z"></path></svg>
+                Añadir al carrito
+            </button>
+        </div>
+
+        <!-- Carrito de Compra -->
+        <div id="cartSection" class="hidden mt-10 border-t pt-8">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-xl font-bold flex items-center gap-2 text-gray-800">
+                    <span>🛒 Carrito de Compra</span>
+                </h2>
+                <button onclick="clearCart()" class="bg-red-500 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-red-600 transition duration-150">
+                    Vaciar carrito
+                </button>
+            </div>
+            <div class="overflow-x-auto">
+                <table class="w-full text-left border-collapse">
+                    <thead>
+                        <tr class="border-b text-gray-500 text-sm">
+                            <th class="py-3 px-2">Detalle del Producto / Pack</th>
+                            <th class="py-3 px-2 w-32">Coste</th>
+                            <th class="py-3 px-2 w-44">Ganancia (€)</th>
+                            <th class="py-3 px-2 w-12 text-center"></th>
+                        </tr>
+                    </thead>
+                    <tbody id="cartTableBody" class="divide-y divide-gray-100"></tbody>
+                    <tfoot id="cartFooter"></tfoot>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let rawData = [], cart = [];
+
+        document.getElementById('excelFile').addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+            
+            document.getElementById('fileNameDisplay').textContent = `Cargado: ${file.name}`;
+            
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                const data = new Uint8Array(e.target.result);
+                const wb = XLSX.read(data, {type: 'array'});
+                rawData = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]]);
+                
+                // Ocultar instrucciones y cargar formulario
+                document.getElementById('instructions').classList.add('hidden');
+                initForm();
+            };
+            reader.readAsArrayBuffer(file);
+        });
+
+        function initForm() {
+            document.getElementById('calculatorForm').classList.remove('hidden');
+            const cats = [...new Set(rawData.map(r => r.Categoria).filter(c => c))];
+            fillSelect('cat1', cats, updateCat2);
+            updateCat2();
+        }
+
+        function fillSelect(id, options, callback) {
+            const el = document.getElementById(id);
+            el.innerHTML = options.map(o => `<option value="${o}">${o}</option>`).join('');
+            if(callback) el.onchange = callback;
+        }
+
+        function updateCat2() {
+            const cat1 = document.getElementById('cat1').value;
+            const cats2 = [...new Set(rawData.filter(r => r.Categoria === cat1).map(r => r['Categoria 2'] || '(Ninguna)'))];
+            fillSelect('cat2', cats2, updateNombre);
+            updateNombre();
+        }
+
+        function updateExtras() {
+            const item = getSelectedItem();
+            if(!item) return;
+            const colores = [];
+            for(let i=1; i<=7; i++) if(item[`Color ${i}`]) colores.push(item[`Color ${i}`]);
+            document.getElementById('colorWrapper').classList.toggle('hidden', colores.length === 0);
+            if(colores.length > 0) fillSelect('color', colores);
+            ['1', '2'].forEach(n => {
+                const nombreAd = item[`Adicional ${n}`];
+                const show = !!nombreAd;
+                document.getElementById(`ad${n}Wrapper`).classList.toggle('hidden', !show);
+                if(show) {
+                    document.getElementById(`lblAd${n}`).textContent = nombreAd;
+                    document.getElementById(`ad${n}`).innerHTML = `<option value="No">No</option><option value="Si">Si (+${item['Coste adicional '+n]}€)</option>`;
+                }
+            });
+            document.getElementById('addBtn').classList.remove('hidden');
+        }
+
+        function updateNombre() {
+            const c1 = document.getElementById('cat1').value;
+            const c2 = document.getElementById('cat2').value;
+            const items = rawData.filter(r => r.Categoria === c1 && (c2 === '(Ninguna)' ? !r['Categoria 2'] : (r['Categoria 2'] === c2)));
+            const el = document.getElementById('nombre');
+            el.innerHTML = items.map(r => `<option value="${r.Nombre}">${r.Nombre}</option>`).join('');
+            el.onchange = updateExtras;
+            updateExtras();
+        }
+
+        function getSelectedItem() {
+            const c1 = document.getElementById('cat1').value;
+            const c2 = document.getElementById('cat2').value;
+            const nombre = document.getElementById('nombre').value;
+            return rawData.find(r => r.Categoria === c1 && (r['Categoria 2'] || '(Ninguna)') === c2 && r.Nombre === nombre);
+        }
+
+        // Funciones del Selector de Cantidad
+        function incrementQty() {
+            const input = document.getElementById('cantidad');
+            input.value = parseInt(input.value || 1) + 1;
+        }
+
+        function decrementQty() {
+            const input = document.getElementById('cantidad');
+            const val = parseInt(input.value || 1);
+            if (val > 1) {
+                input.value = val - 1;
+            }
+        }
+
+        function addToCart() {
+            const item = getSelectedItem();
+            const cantidad = parseInt(document.getElementById('cantidad').value) || 1;
+            let coste = parseFloat(item.Precio || 0);
+            let detalles = `${item.Categoria} ${item['Categoria 2'] || ''} - ${item.Nombre}`;
+            
+            let colorVal = "";
+            if (!document.getElementById('colorWrapper').classList.contains('hidden')) {
+                colorVal = ` [Color: ${document.getElementById('color').value}]`;
+                detalles += colorVal;
+            }
+
+            ['1', '2'].forEach(n => {
+                if(!document.getElementById(`ad${n}Wrapper`).classList.contains('hidden') && document.getElementById(`ad${n}`).value === 'Si') {
+                    coste += parseFloat(item['Coste adicional '+n] || 0);
+                    detalles += ` + ${item['Adicional '+n]}`;
+                }
+            });
+
+            // Añadir individualmente por cantidad para permitir un cálculo unitario de packs transparente
+            for (let i = 0; i < cantidad; i++) {
+                cart.push({ 
+                    cat: detalles, 
+                    coste, 
+                    categoria: item.Categoria, 
+                    manualGan: null 
+                });
+            }
+
+            // Reiniciar cantidad a 1
+            document.getElementById('cantidad').value = 1;
+
+            updateCartUI();
+        }
+
+        function removeFromCart(index) {
+            cart.splice(index, 1);
+            updateCartUI();
+        }
+
+        function clearCart() {
+            cart = [];
+            updateCartUI();
+        }
+
+        function updateManualGanancia(index, value) {
+            cart[index].manualGan = parseFloat(value) || 0;
+            updateCartUI();
+        }
+
+        function setGananciaZero(index) {
+            cart[index].manualGan = 0;
+            updateCartUI();
+        }
+
+        // Helpers de detección de categorías con soporte de tildes y mayúsculas
+        const normalizeStr = (str) => {
+            if (!str) return "";
+            return str.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+        };
+
+        const esCanape = (cat) => normalizeStr(cat).includes("canape");
+        const esColchon = (cat) => normalizeStr(cat).includes("colchon");
+        const esCabezal = (cat) => normalizeStr(cat).includes("cabezal");
+        const esComoda = (cat) => normalizeStr(cat).includes("comoda") || normalizeStr(cat).includes("cajones");
+        const esLitera = (cat) => normalizeStr(cat).includes("litera");
+        const esArmario = (cat) => normalizeStr(cat).includes("armario");
+
+        function updateCartUI() {
+            document.getElementById('cartSection').classList.toggle('hidden', cart.length === 0);
+            
+            // Creamos un clon de trabajo para calcular las ganancias sin alterar los campos base
+            let items = cart.map((item, idx) => ({
+                originalIndex: idx,
+                cat: item.cat,
+                coste: item.coste,
+                categoria: item.categoria,
+                manualGan: item.manualGan,
+                autoGan: null,
+                packInfo: null,
+                used: false
+            }));
+
+            // ---- APLICACIÓN DE LAS REGLAS DE PACKS ----
+
+            // PACK 4: Litera con 2 Colchones -> Ganancia total = 95 € para los 3 artículos
+            while (true) {
+                let litera = items.find(i => !i.used && esLitera(i.categoria));
+                let col1 = items.find(i => !i.used && esColchon(i.categoria));
+                let col2 = items.find(i => !i.used && esColchon(i.categoria) && i !== col1);
+
+                if (litera && col1 && col2) {
+                    litera.used = true;
+                    col1.used = true;
+                    col2.used = true;
+
+                    // Ponemos los 95€ de beneficio en uno de los artículos del pack (la litera) y 0€ en los colchones
+                    litera.autoGan = 95;
+                    col1.autoGan = 0;
+                    col2.autoGan = 0;
+
+                    litera.packInfo = "Pack Litera + 2 Colchones (95€ ganancia)";
+                    col1.packInfo = "Pack Litera + 2 Colchones (Incluido)";
+                    col2.packInfo = "Pack Litera + 2 Colchones (Incluido)";
+                } else {
+                    break;
+                }
+            }
+
+            // PACK 3: Cómoda de 3 cajones + Canapé/Colchón/Cabezal -> 10 € en cómoda, 80 € en un artículo, 0 € en los demás
+            // Puede albergar hasta un máximo de 4 líneas distintas en total (1 cómoda + hasta 3 artículos objetivos)
+            while (true) {
+                let comoda = items.find(i => !i.used && esComoda(i.categoria));
+                if (!comoda) break;
+
+                // Buscar todos los artículos objetivos (Canapé, Colchón, Cabezal) que aún no estén usados en otros packs
+                let targets = items.filter(i => !i.used && (esCanape(i.categoria) || esColchon(i.categoria) || esCabezal(i.categoria)));
+
+                if (targets.length > 0) {
+                    // Tomamos un máximo de 3 artículos objetivos para agruparlos con la cómoda (total de hasta 4 líneas en el pack)
+                    let targetsInPack = targets.slice(0, 3);
+
+                    // Marcar cómoda como usada
+                    comoda.used = true;
+                    comoda.autoGan = 10;
+                    comoda.packInfo = "Pack Cómoda (10€)";
+
+                    // Procesar los objetivos del pack
+                    targetsInPack.forEach((target, index) => {
+                        target.used = true;
+                        // Solo el primero de los objetivos se lleva la ganancia de 80€, los demás van a 0€
+                        if (index === 0) {
+                            target.autoGan = 80;
+                            target.packInfo = "Pack Cómoda + " + target.categoria + " (80€)";
+                        } else {
+                            target.autoGan = 0;
+                            target.packInfo = "Pack Cómoda + " + target.categoria + " (Incluido)";
+                        }
+                    });
+                } else {
+                    // Si no hay artículos adicionales con los que emparejar la cómoda, rompemos el ciclo
+                    // para evitar un bucle infinito. La cómoda recibirá el beneficio estándar al final.
+                    break;
+                }
+            }
+
+            // PACK 2: Canapé + Colchón + Cabezal (Aplica ganancia de 80€ solo en un artículo cuando haya 2 o 3 juntos)
+            // Primero buscamos tríos completos
+            while (true) {
+                let canape = items.find(i => !i.used && esCanape(i.categoria));
+                let colchon = items.find(i => !i.used && esColchon(i.categoria));
+                let cabezal = items.find(i => !i.used && esCabezal(i.categoria));
+
+                if (canape && colchon && cabezal) {
+                    canape.used = true;
+                    colchon.used = true;
+                    cabezal.used = true;
+
+                    canape.autoGan = 80;
+                    colchon.autoGan = 0;
+                    cabezal.autoGan = 0;
+
+                    canape.packInfo = "Pack 3 Elementos (80€)";
+                    colchon.packInfo = "Pack 3 Elementos (Incluido)";
+                    cabezal.packInfo = "Pack 3 Elementos (Incluido)";
+                } else {
+                    break;
+                }
+            }
+
+            // Buscamos parejas de diferentes categorías (Canapé + Colchón, Canapé + Cabezal, Colchón + Cabezal)
+            while (true) {
+                let foundPair = false;
+                let canape = items.find(i => !i.used && esCanape(i.categoria));
+                let colchon = items.find(i => !i.used && esColchon(i.categoria));
+                let cabezal = items.find(i => !i.used && esCabezal(i.categoria));
+
+                if (canape && colchon) {
+                    canape.used = true;
+                    colchon.used = true;
+                    canape.autoGan = 80;
+                    colchon.autoGan = 0;
+                    canape.packInfo = "Pack 2 Elementos (80€)";
+                    colchon.packInfo = "Pack 2 Elementos (Incluido)";
+                    foundPair = true;
+                } else if (canape && cabezal) {
+                    canape.used = true;
+                    cabezal.used = true;
+                    canape.autoGan = 80;
+                    cabezal.autoGan = 0;
+                    canape.packInfo = "Pack 2 Elementos (80€)";
+                    cabezal.packInfo = "Pack 2 Elementos (Incluido)";
+                    foundPair = true;
+                } else if (colchon && cabezal) {
+                    colchon.used = true;
+                    cabezal.used = true;
+                    colchon.autoGan = 80;
+                    cabezal.autoGan = 0;
+                    colchon.packInfo = "Pack 2 Elementos (80€)";
+                    cabezal.packInfo = "Pack 2 Elementos (Incluido)";
+                    foundPair = true;
+                }
+
+                if (!foundPair) break;
+            }
+
+            // PACK 1: Canapé + Canapé -> Ganancia de 80 € en uno solo de ellos
+            while (true) {
+                let canape1 = items.find(i => !i.used && esCanape(i.categoria));
+                let canape2 = items.find(i => !i.used && esCanape(i.categoria) && i !== canape1);
+
+                if (canape1 && canape2) {
+                    canape1.used = true;
+                    canape2.used = true;
+
+                    canape1.autoGan = 80;
+                    canape2.autoGan = 0;
+
+                    canape1.packInfo = "Pack Canapés (80€)";
+                    canape2.packInfo = "Pack Canapés (Incluido)";
+                } else {
+                    break;
+                }
+            }
+
+            // BENEFICIO POR DEFECTO para todo artículo libre restante
+            items.forEach(i => {
+                if (i.autoGan === null) {
+                    if (esArmario(i.categoria)) {
+                        i.autoGan = 105;
+                    } else {
+                        i.autoGan = 80;
+                    }
+                }
+            });
+
+            // Procesar y renderizar las filas finales
+            let filas = [];
+            let totalGananciaGlobal = 0;
+
+            items.forEach((item) => {
+                // Si el usuario configuró una ganancia manual, la respetamos. De lo contrario, usamos la automática (con packs)
+                let gananciaFinal = item.manualGan !== null ? item.manualGan : item.autoGan;
+                totalGananciaGlobal += gananciaFinal;
+
+                let badge = "";
+                if (item.packInfo) {
+                    badge = `<span class="ml-2 inline-flex items-center px-2 py-0.5 rounded text-[11px] font-semibold bg-green-100 text-green-800">${item.packInfo}</span>`;
+                }
+
+                filas.push(`<tr class="hover:bg-gray-50/50 transition duration-150">
+                    <td class="py-3 px-2 text-sm text-gray-800 font-medium">
+                        ${item.cat}${badge}
+                    </td>
+                    <td class="py-3 px-2 text-sm text-gray-600 font-semibold">${item.coste.toFixed(2)}€</td>
+                    <td class="py-3 px-2">
+                        <div class="flex items-center gap-1.5">
+                            <input type="number" 
+                                   value="${gananciaFinal}" 
+                                   onchange="updateManualGanancia(${item.originalIndex}, this.value)" 
+                                   class="w-20 p-1.5 border text-sm rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none ${item.packInfo ? 'bg-green-50 text-green-700 border-green-200 font-semibold' : 'bg-white border-gray-200'}">
+                            <button onclick="setGananciaZero(${item.originalIndex})" 
+                                    title="Poner ganancia a 0" 
+                                    class="bg-gray-100 hover:bg-red-100 hover:text-red-700 text-gray-500 p-1.5 rounded-lg text-xs font-extrabold transition duration-150 w-8 h-8 flex items-center justify-center border border-gray-200 hover:border-red-200">
+                                0
+                            </button>
+                        </div>
+                    </td>
+                    <td class="py-3 px-2 text-center">
+                        <button onclick="removeFromCart(${item.originalIndex})" class="text-red-500 hover:text-red-700 font-bold transition text-xl">×</button>
+                    </td>
+                </tr>`);
+            });
+
+            document.getElementById('cartTableBody').innerHTML = filas.join('');
+            
+            // Totales finales de costes, ganancias y PVP del presupuesto
+            const tc = cart.reduce((a, b) => a + b.coste, 0);
+            const totalPresupuestoPVP = tc + totalGananciaGlobal;
+
+            document.getElementById('cartFooter').innerHTML = `
+                <tr class="font-semibold text-gray-600 border-t border-gray-200">
+                    <td class="py-3 px-2 text-sm">Subtotal de Costes</td>
+                    <td class="py-3 px-2 text-sm">${tc.toFixed(2)}€</td>
+                    <td class="py-3 px-2 text-sm" colspan="2"></td>
+                </tr>
+                <tr class="font-semibold text-gray-600">
+                    <td class="py-3 px-2 text-sm">Subtotal de Ganancias</td>
+                    <td class="py-3 px-2 text-sm" colspan="1"></td>
+                    <td class="py-3 px-2 text-sm text-green-700 font-bold" colspan="2">${totalGananciaGlobal.toFixed(2)}€</td>
+                </tr>
+                <tr class="font-extrabold text-lg text-blue-800 bg-blue-50/80 border-t-2 border-blue-500 rounded-b-lg">
+                    <td class="py-4 px-3" colspan="2">TOTAL PRESUPUESTO (PVP)</td>
+                    <td class="py-4 px-2 text-right pr-6" colspan="2">${totalPresupuestoPVP.toFixed(2)}€</td>
+                </tr>
+            `;
+        }
+    </script>
+</body>
+</html>
