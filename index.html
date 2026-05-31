@@ -1,0 +1,668 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Calculadora de Presupuestos Oriol</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script>
+        // Configuración de Tailwind para soportar cambio de modo oscuro mediante clase 'dark'
+        tailwind.config = {
+            darkMode: 'class'
+        }
+        // Aplicar el tema guardado de inmediato para evitar destellos blancos
+        if (localStorage.getItem('theme') === 'dark' || (!('theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+            document.documentElement.classList.add('dark');
+        } else {
+            document.documentElement.classList.remove('dark');
+        }
+    </script>
+    <style>
+        /* Fuerza a que el select cerrado (la opción seleccionada en pantalla) tenga un contraste óptimo en modo noche */
+        .dark select {
+            background-color: #27272a !important; /* zinc-800 */
+            color: #f4f4f5 !important;            /* zinc-100 */
+        }
+        
+        /* Fuerza a que las opciones desplegables tengan fondo blanco y texto oscuro */
+        /* para evitar problemas de contraste y texto invisible en ciertos navegadores */
+        select option {
+            color: #18181b !important;
+            background-color: #ffffff !important;
+        }
+    </style>
+</head>
+<body class="bg-slate-50 dark:bg-black min-h-screen p-3 sm:p-6 md:p-8 text-slate-800 dark:text-zinc-100 transition-colors duration-200">
+    <!-- El contenedor principal utiliza ahora un gris carbón neutro puro en modo noche -->
+    <div class="max-w-4xl mx-auto bg-white dark:bg-zinc-900 p-4 sm:p-6 md:p-8 rounded-2xl shadow-sm border border-slate-100 dark:border-zinc-800/80 relative transition-colors duration-200">
+        
+        <!-- Selector de tema en la esquina superior derecha -->
+        <div class="absolute top-4 right-4 sm:top-6 sm:right-8">
+            <button id="themeToggle" onclick="toggleTheme()" class="p-2.5 bg-slate-100 dark:bg-zinc-800 text-slate-800 dark:text-zinc-200 rounded-xl shadow-sm border border-slate-200 dark:border-zinc-700 hover:bg-slate-200 dark:hover:bg-zinc-700 transition duration-150 flex items-center gap-2 text-xs sm:text-sm font-semibold select-none">
+                <span id="themeIcon">🌙</span> <span id="themeText" class="hidden sm:inline">Modo Noche</span>
+            </button>
+        </div>
+
+        <header class="mb-6 pr-24 sm:pr-0">
+            <h1 class="text-xl sm:text-2xl md:text-3xl font-bold text-slate-900 dark:text-white mb-1 flex items-center gap-2">
+                <span>📋</span> Calculadora de Presupuestos Oriol
+            </h1>
+            <p class="text-xs sm:text-sm text-slate-500 dark:text-zinc-400">Sube tu archivo Excel o CSV para empezar a cotizar de forma automática con packs inteligentes adaptados.</p>
+        </header>
+        
+        <div class="mb-6 p-4 sm:p-6 border-2 border-dashed border-slate-200 dark:border-zinc-700 hover:border-blue-400 dark:hover:border-blue-500 rounded-xl text-center bg-slate-50/50 dark:bg-zinc-900/30 hover:bg-slate-50 dark:hover:bg-zinc-800/20 transition duration-150">
+            <input type="file" id="excelFile" accept=".csv, .xlsx" class="hidden">
+            <label for="excelFile" class="cursor-pointer flex flex-col items-center justify-center space-y-2 py-2">
+                <svg class="w-10 h-10 text-blue-500 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path>
+                </svg>
+                <span class="text-blue-600 dark:text-blue-400 font-semibold hover:text-blue-700 dark:hover:text-blue-300 text-sm sm:text-base">
+                    Selecciona o arrastra tu archivo CSV/Excel
+                </span>
+                <span class="text-xs text-slate-400 dark:text-zinc-500" id="fileNameDisplay">Formatos admitidos: .xlsx, .csv</span>
+            </label>
+        </div>
+
+        <div id="instructions" class="mb-6 p-4 bg-blue-50 dark:bg-blue-950/20 border border-blue-100 dark:border-blue-900/40 text-blue-800 dark:text-blue-300 rounded-xl text-xs md:text-sm space-y-2">
+            <p class="font-bold flex items-center gap-1">💡 Estructura requerida del archivo Excel:</p>
+            <p class="text-xs text-blue-700 dark:text-blue-400">Tu archivo debe contener las siguientes columnas (exactamente con estos nombres):</p>
+            <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2 font-mono text-[10px] sm:text-[11px] bg-white/70 dark:bg-zinc-900/60 p-3 rounded-lg border border-blue-100 dark:border-blue-900/20">
+                <div>• Categoria</div>
+                <div>• Categoria 2</div>
+                <div>• Nombre</div>
+                <div>• Precio</div>
+                <div>• Color 1 ... Color 7</div>
+                <div>• Adicional 1 / 2</div>
+                <div>• Coste adicional 1 / 2</div>
+            </div>
+        </div>
+
+        <div id="calculatorForm" class="hidden space-y-5 bg-slate-50/50 dark:bg-zinc-900/40 p-4 sm:p-6 rounded-2xl border border-slate-100 dark:border-zinc-800">
+            <h3 class="text-base sm:text-lg font-bold text-slate-800 dark:text-zinc-200 border-b border-slate-200 dark:border-zinc-800 pb-2 flex items-center gap-2">
+                <span>⚙️</span> Configurar Producto
+            </h3>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                    <label class="block text-xs sm:text-sm font-semibold text-slate-700 dark:text-zinc-300">Categoría</label>
+                    <select id="cat1" class="w-full mt-1 p-2.5 bg-white dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:outline-none text-xs sm:text-sm text-slate-800 dark:text-zinc-100"></select>
+                </div>
+                <div>
+                    <label class="block text-xs sm:text-sm font-semibold text-slate-700 dark:text-zinc-300">Categoría 2</label>
+                    <select id="cat2" class="w-full mt-1 p-2.5 bg-white dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:outline-none text-xs sm:text-sm text-slate-800 dark:text-zinc-100"></select>
+                </div>
+                <div>
+                    <label class="block text-xs sm:text-sm font-semibold text-slate-700 dark:text-zinc-300">Nombre (Medida)</label>
+                    <select id="nombre" class="w-full mt-1 p-2.5 bg-white dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:outline-none text-xs sm:text-sm text-slate-800 dark:text-zinc-100"></select>
+                    
+                    <!-- Banner dinámico para informar del filtro inteligente de medidas -->
+                    <div id="filterBanner" class="hidden mt-2 bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900/60 rounded-xl p-3 flex flex-col gap-2 text-xs text-amber-800 dark:text-amber-300 transition duration-150">
+                        <div class="flex items-start gap-1.5">
+                            <span id="filterBannerIcon" class="text-sm">📏</span>
+                            <span id="filterBannerText" class="leading-tight">Mostrando solo productos de medida coincidente.</span>
+                        </div>
+                        <button type="button" onclick="disableFilter()" class="w-full bg-amber-100 dark:bg-amber-900/60 hover:bg-amber-200 dark:hover:bg-amber-800 text-amber-900 dark:text-amber-200 font-bold py-1.5 px-2.5 rounded-lg transition duration-150 text-[11px] sm:text-xs">
+                            Mostrar todas las medidas
+                        </button>
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-xs sm:text-sm font-semibold text-slate-700 dark:text-zinc-300 mb-1">Cantidad</label>
+                    <div class="flex items-center h-11 w-36 border border-slate-200 dark:border-zinc-700 rounded-lg bg-white dark:bg-zinc-800 shadow-sm overflow-hidden mt-1">
+                        <button type="button" onclick="decrementQty()" class="w-12 h-full flex items-center justify-center text-slate-600 dark:text-zinc-400 hover:bg-slate-100 dark:hover:bg-zinc-700 hover:text-slate-800 dark:hover:text-zinc-200 font-bold text-lg select-none transition duration-150 border-r border-slate-200 dark:border-zinc-700">
+                            -
+                        </button>
+                        <input type="number" id="cantidad" min="1" value="1" class="w-12 h-full text-center font-bold text-slate-800 dark:text-zinc-100 bg-transparent focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none text-sm sm:text-base">
+                        <button type="button" onclick="incrementQty()" class="w-12 h-full flex items-center justify-center text-slate-600 dark:text-zinc-400 hover:bg-slate-100 dark:hover:bg-zinc-700 hover:text-slate-800 dark:hover:text-zinc-200 font-bold text-lg select-none transition duration-150 border-l border-slate-200 dark:border-zinc-700">
+                            +
+                        </button>
+                    </div>
+                </div>
+                <div id="colorWrapper" class="hidden">
+                    <label class="block text-xs sm:text-sm font-semibold text-slate-700 dark:text-zinc-300">Color</label>
+                    <select id="color" class="w-full mt-1 p-2.5 bg-white dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:outline-none text-xs sm:text-sm text-slate-800 dark:text-zinc-100"></select>
+                </div>
+                <div id="ad1Wrapper" class="hidden">
+                    <label id="lblAd1" class="block text-xs sm:text-sm font-semibold text-slate-700 dark:text-zinc-300">Adicional 1</label>
+                    <select id="ad1" class="w-full mt-1 p-2.5 bg-white dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:outline-none text-xs sm:text-sm text-slate-800 dark:text-zinc-100"></select>
+                </div>
+                <div id="ad2Wrapper" class="hidden">
+                    <label id="lblAd2" class="block text-xs sm:text-sm font-semibold text-slate-700 dark:text-zinc-300">Adicional 2</label>
+                    <select id="ad2" class="w-full mt-1 p-2.5 bg-white dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:outline-none text-xs sm:text-sm text-slate-800 dark:text-zinc-100"></select>
+                </div>
+                <div class="col-span-1 sm:col-span-2 flex items-center gap-2 mt-2">
+                    <input type="checkbox" id="montajeGratuito" class="w-5 h-5 text-blue-600 border-slate-300 dark:border-zinc-700 rounded focus:ring-blue-500 dark:bg-zinc-800 cursor-pointer">
+                    <label for="montajeGratuito" class="text-xs sm:text-sm font-semibold text-slate-700 dark:text-zinc-300 cursor-pointer select-none">
+                        Añadir Montaje Gratuito
+                    </label>
+                </div>
+            </div>
+            <button onclick="addToCart()" id="addBtn" class="w-full bg-blue-600 text-white py-3 sm:py-3.5 px-4 rounded-xl font-bold hover:bg-blue-700 transition duration-150 shadow-md hidden flex justify-center items-center gap-2 text-sm sm:text-base">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z"></path></svg>
+                Añadir al carrito
+            </button>
+        </div>
+
+        <div id="cartSection" class="hidden mt-8 border-t border-slate-200 dark:border-zinc-800 pt-6">
+            <div class="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 mb-6">
+                <h2 class="text-lg sm:text-xl font-bold flex items-center gap-2 text-slate-900 dark:text-white">
+                    <span>🛒</span> Mi Carrito de Compra
+                </h2>
+                <button onclick="clearCart()" class="w-full sm:w-auto bg-red-500 text-white px-4 py-2 rounded-lg text-xs sm:text-sm font-medium hover:bg-red-600 transition duration-150">
+                    Vaciar carrito
+                </button>
+            </div>
+
+            <!-- Tabla de ordenadores (Desktop) -->
+            <div class="hidden md:block overflow-x-auto border border-slate-100 dark:border-zinc-800 rounded-xl">
+                <table class="w-full text-left border-collapse border-spacing-0">
+                    <thead>
+                        <tr class="bg-slate-50 dark:bg-zinc-800/40 border-b border-slate-200 dark:border-zinc-800 text-slate-500 dark:text-zinc-400 text-xs font-semibold uppercase tracking-wider">
+                            <th class="py-3.5 px-4">Detalle del Producto / Pack</th>
+                            <th class="py-3.5 px-4 w-28 text-center">Cantidad</th>
+                            <th class="py-3.5 px-4 w-32">Coste Original</th>
+                            <th class="py-3.5 px-4 w-44">Ganancia (€)</th>
+                            <th class="py-3.5 px-4 w-12 text-center"></th>
+                        </tr>
+                    </thead>
+                    <tbody id="cartTableBody" class="divide-y divide-slate-100 dark:divide-zinc-800"></tbody>
+                </table>
+            </div>
+
+            <!-- Listado para móviles -->
+            <div class="block md:hidden space-y-4" id="cartMobileContainer"></div>
+
+            <div class="mt-6 border border-slate-200 dark:border-zinc-800 rounded-2xl overflow-hidden bg-slate-50/50 dark:bg-zinc-900/30">
+                <div class="p-4 sm:p-5 space-y-2 border-b border-slate-200 dark:border-zinc-800 text-xs sm:text-sm">
+                    <div class="flex justify-between font-medium text-slate-500 dark:text-zinc-400">
+                        <span>Subtotal de Costes:</span>
+                        <span id="subtotalCostes" class="font-bold text-slate-800 dark:text-zinc-200">0.00€</span>
+                    </div>
+                    <div class="flex justify-between font-medium text-slate-500 dark:text-zinc-400">
+                        <span>Subtotal de Ganancias:</span>
+                        <span id="subtotalGanancias" class="font-bold text-green-700 dark:text-green-400">0.00€</span>
+                    </div>
+                </div>
+                
+                <div class="p-4 sm:p-5 bg-blue-50 dark:bg-blue-950/20 flex flex-col md:flex-row justify-between items-stretch md:items-center gap-4">
+                    <div class="flex flex-col">
+                        <span class="text-[10px] sm:text-xs uppercase tracking-wider font-extrabold text-blue-900 dark:text-blue-350">TOTAL PRESUPUESTO (PVP)</span>
+                        <span id="totalPresupuesto" class="text-xl sm:text-2xl font-black text-blue-900 dark:text-blue-250">0.00€</span>
+                    </div>
+                    <button onclick="toggleCheckoutForm()" id="checkoutBtn" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-5 rounded-xl shadow-md flex items-center justify-center gap-2 transition duration-150 text-sm">
+                        <span>📦</span> Tramitar Pedido
+                    </button>
+                </div>
+            </div>
+
+            <div id="checkoutForm" class="hidden mt-6 p-5 bg-slate-50 dark:bg-zinc-900/50 border border-slate-200 dark:border-zinc-800 rounded-2xl space-y-4 transition duration-300">
+                <h3 class="text-base font-bold text-slate-800 dark:text-zinc-200 flex items-center gap-2 pb-2 border-b border-slate-200 dark:border-zinc-800">
+                    <span>📍</span> Datos de Envío y Contacto
+                </h3>
+                
+                <div class="grid grid-cols-4 gap-4">
+                    <div class="col-span-4 sm:col-span-2">
+                        <label for="orderStreet" class="block text-xs font-semibold text-slate-600 dark:text-zinc-400 uppercase tracking-wide">Calle</label>
+                        <input type="text" id="orderStreet" class="w-full mt-1 p-2.5 bg-white dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:outline-none text-sm transition dark:text-white" placeholder="Nombre de la calle">
+                    </div>
+                    <div class="col-span-2 sm:col-span-1">
+                        <label for="orderNumber" class="block text-xs font-semibold text-slate-600 dark:text-zinc-400 uppercase tracking-wide">Número</label>
+                        <input type="text" id="orderNumber" class="w-full mt-1 p-2.5 bg-white dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:outline-none text-sm transition dark:text-white" placeholder="Nº">
+                    </div>
+                    <div class="col-span-1">
+                        <label for="orderFloor" class="block text-xs font-semibold text-slate-600 dark:text-zinc-400 uppercase tracking-wide">Piso</label>
+                        <input type="text" id="orderFloor" class="w-full mt-1 p-2.5 bg-white dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:outline-none text-sm dark:text-white" placeholder="Piso">
+                    </div>
+                    <div class="col-span-1">
+                        <label for="orderDoor" class="block text-xs font-semibold text-slate-600 dark:text-zinc-400 uppercase tracking-wide">Puerta</label>
+                        <input type="text" id="orderDoor" class="w-full mt-1 p-2.5 bg-white dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:outline-none text-sm dark:text-white" placeholder="Puerta">
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                        <label for="orderZip" class="block text-xs font-semibold text-slate-600 dark:text-zinc-400 uppercase tracking-wide">Código Postal</label>
+                        <input type="text" id="orderZip" placeholder="e.g. 28001" class="w-full mt-1 p-2.5 bg-white dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:outline-none text-sm transition dark:text-white">
+                    </div>
+                    <div>
+                        <label for="orderPhone" class="block text-xs font-semibold text-slate-600 dark:text-zinc-400 uppercase tracking-wide">Número de Teléfono</label>
+                        <input type="tel" id="orderPhone" placeholder="e.g. +34 600 000 000" class="w-full mt-1 p-2.5 bg-white dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:outline-none text-sm transition dark:text-white">
+                    </div>
+                </div>
+
+                <div id="checkoutError" class="hidden p-3 bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-400 text-xs font-bold rounded-lg border border-red-200 dark:border-red-900 text-center"></div>
+                
+                <div class="pt-2 flex flex-col sm:flex-row gap-3">
+                    <button onclick="generateWhatsAppMessage()" class="flex-1 bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-4 rounded-xl shadow-md transition duration-150 flex items-center justify-center gap-2 text-sm">
+                        <span>💬</span> Finalizar y Preparar WhatsApp
+                    </button>
+                    <button onclick="toggleCheckoutForm()" class="bg-slate-200 dark:bg-zinc-800 hover:bg-slate-300 dark:hover:bg-zinc-700 text-slate-700 dark:text-zinc-300 font-semibold py-3 px-4 rounded-xl transition duration-150 text-sm">
+                        Cancelar
+                    </button>
+                </div>
+            </div>
+
+            <div id="whatsappShareBox" class="hidden mt-6 p-5 bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-100 dark:border-emerald-900/40 rounded-2xl space-y-3">
+                <div class="flex justify-between items-center">
+                    <h4 class="text-sm font-bold text-emerald-900 dark:text-emerald-300 flex items-center gap-1.5">
+                        <span>✅</span> ¡Mensaje Listo para Enviar!
+                    </h4>
+                    <button onclick="closeShareBox()" class="text-emerald-700 dark:text-emerald-400 hover:text-emerald-900 dark:hover:text-emerald-200 font-bold text-sm">Cerrar</button>
+                </div>
+                <p class="text-xs text-emerald-800 dark:text-emerald-400">Copia este resumen formateado y envíaselo directamente a tu cliente por WhatsApp:</p>
+                <div class="relative bg-white dark:bg-black p-4 rounded-lg border border-emerald-200 dark:border-emerald-900/30">
+                    <pre id="whatsappMessageContent" class="text-xs font-mono text-slate-800 dark:text-zinc-200 whitespace-pre-wrap leading-relaxed max-h-60 overflow-y-auto"></pre>
+                </div>
+                <div class="flex flex-col sm:flex-row gap-2 pt-1">
+                    <button onclick="copyToClipboard()" class="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2.5 px-4 rounded-lg text-xs transition duration-150 flex items-center justify-center gap-2">
+                        <span>📋</span> Copiar al Portapapeles
+                    </button>
+                    <button onclick="openWhatsAppWeb()" class="flex-1 bg-teal-600 hover:bg-teal-700 text-white font-bold py-2.5 px-4 rounded-lg text-xs transition duration-150 flex items-center justify-center gap-2">
+                        <span>📲</span> Enviar Directo a WhatsApp
+                    </button>
+                </div>
+                <div id="copySuccessAlert" class="hidden text-center text-xs text-emerald-700 dark:text-emerald-300 font-semibold bg-emerald-100 dark:bg-emerald-950/40 p-2 rounded-lg">
+                    ¡Copiado con éxito al portapapeles!
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let rawData = [], cart = [];
+        
+        // Estado de control del filtro dinámico de medidas
+        let activeCanapeSize = null;
+        let activeColchonSize = null;
+        let filterEnabled = true;
+
+        // Alternar el tema Día/Noche
+        function toggleTheme() {
+            const isDark = document.documentElement.classList.toggle('dark');
+            localStorage.setItem('theme', isDark ? 'dark' : 'light');
+            updateThemeUI();
+        }
+
+        // Actualizar la interfaz del botón de tema
+        function updateThemeUI() {
+            const isDark = document.documentElement.classList.contains('dark');
+            const icon = document.getElementById('themeIcon');
+            const text = document.getElementById('themeText');
+            if (icon && text) {
+                icon.textContent = isDark ? '☀️' : '🌙';
+                text.textContent = isDark ? 'Modo Día' : 'Modo Noche';
+            }
+        }
+
+        // Ejecutar sincronización al inicio
+        updateThemeUI();
+
+        // Función para extraer la medida estandarizada (ej: "135x190") de un texto
+        function extractSize(str) {
+            if (!str) return null;
+            const match = str.match(/(\d{2,3})\s*[xX\*]\s*(\d{2,3})/);
+            if (match) {
+                return `${match[1]}x${match[2]}`;
+            }
+            return null;
+        }
+
+        // Obtener la medida de referencia basándose en el carrito y en el último producto configurado
+        function getReferenceSize(currentCategory) {
+            const isCurrentColchon = esColchon(currentCategory);
+            const isCurrentCanape = esCanape(currentCategory);
+            
+            if (isCurrentColchon) {
+                const canapeInCart = cart.find(c => esCanape(c.categoria));
+                if (canapeInCart) {
+                    const size = extractSize(canapeInCart.cat);
+                    if (size) return { size, source: "canapé del carrito" };
+                }
+                if (activeCanapeSize) {
+                    return { size: activeCanapeSize, source: "canapé seleccionado" };
+                }
+            } else if (isCurrentCanape) {
+                const colchonInCart = cart.find(c => esColchon(c.categoria));
+                if (colchonInCart) {
+                    const size = extractSize(colchonInCart.cat);
+                    if (size) return { size, source: "colchón del carrito" };
+                }
+                if (activeColchonSize) {
+                    return { size: activeColchonSize, source: "colchón seleccionado" };
+                }
+            }
+            return null;
+        }
+
+        function disableFilter() {
+            filterEnabled = false;
+            updateNombre();
+        }
+
+        document.getElementById('excelFile').addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+            document.getElementById('fileNameDisplay').textContent = `Cargado: ${file.name}`;
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                const data = new Uint8Array(e.target.result);
+                const wb = XLSX.read(data, {type: 'array'});
+                rawData = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]]);
+                document.getElementById('instructions').classList.add('hidden');
+                initForm();
+            };
+            reader.readAsArrayBuffer(file);
+        });
+
+        function initForm() {
+            document.getElementById('calculatorForm').classList.remove('hidden');
+            const cats = [...new Set(rawData.map(r => r.Categoria).filter(c => c))];
+            fillSelect('cat1', cats, updateCat2);
+            updateCat2();
+        }
+
+        function fillSelect(id, options, callback) {
+            const el = document.getElementById(id);
+            el.innerHTML = options.map(o => `<option value="${o}">${o}</option>`).join('');
+            if(callback) el.onchange = callback;
+        }
+
+        const normalizeStr = (str) => { if (!str) return ""; return str.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, ""); };
+        const esCanape = (cat) => normalizeStr(cat).includes("canape");
+        const esColchon = (cat) => normalizeStr(cat).includes("colchon");
+        const esCabezal = (cat) => normalizeStr(cat).includes("cabezal");
+        const esComoda = (cat) => normalizeStr(cat).includes("comoda") || normalizeStr(cat).includes("cajones");
+        const esLitera = (cat) => normalizeStr(cat).includes("litera");
+        const esArmario = (cat) => normalizeStr(cat).includes("armario");
+        function getStandardProfit(categoria) { return esArmario(categoria) ? 105 : 80; }
+
+        function updateCat2() {
+            filterEnabled = true;
+            const cat1 = document.getElementById('cat1').value;
+            const cats2 = [...new Set(rawData.filter(r => r.Categoria === cat1).map(r => r['Categoria 2'] || '(Ninguna)'))];
+            const standardProfit = getStandardProfit(cat1);
+            const el = document.getElementById('cat2');
+            el.innerHTML = cats2.map(c2 => {
+                const items = rawData.filter(r => r.Categoria === cat1 && (c2 === '(Ninguna)' ? !r['Categoria 2'] : (r['Categoria 2'] === c2)));
+                const pvps = items.map(r => { const price = parseFloat(r.Precio); return !isNaN(price) ? (price + standardProfit) : null; }).filter(p => p !== null);
+                let priceText = "";
+                if (pvps.length > 0) { const minPvp = Math.min(...pvps); const maxPvp = Math.max(...pvps); priceText = (minPvp === maxPvp) ? ` (${minPvp.toFixed(2)}€)` : ` (${minPvp.toFixed(2)}€ - ${maxPvp.toFixed(2)}€)`; }
+                return `<option value="${c2}">${c2}${priceText}</option>`;
+            }).join('');
+            el.onchange = updateNombre;
+            updateNombre();
+        }
+
+        function updateExtras() {
+            const item = getSelectedItem();
+            if(!item) {
+                document.getElementById('colorWrapper').classList.add('hidden');
+                document.getElementById('ad1Wrapper').classList.add('hidden');
+                document.getElementById('ad2Wrapper').classList.add('hidden');
+                document.getElementById('addBtn').classList.add('hidden');
+                return;
+            }
+            const colores = [];
+            for(let i=1; i<=7; i++) if(item[`Color ${i}`]) colores.push(item[`Color ${i}`]);
+            document.getElementById('colorWrapper').classList.toggle('hidden', colores.length === 0);
+            if(colores.length > 0) fillSelect('color', colores);
+            ['1', '2'].forEach(n => {
+                const itemLabel = item[`Adicional ${n}`];
+                const show = !!itemLabel;
+                document.getElementById(`ad${n}Wrapper`).classList.toggle('hidden', !show);
+                if(show) { document.getElementById(`lblAd${n}`).textContent = itemLabel; document.getElementById(`ad${n}`).innerHTML = `<option value="No">No</option><option value="Si">Si (+${item['Coste adicional '+n]}€)</option>`; }
+            });
+            document.getElementById('addBtn').classList.remove('hidden');
+        }
+
+        function handleNombreChange() {
+            const item = getSelectedItem();
+            if (!item) return;
+            
+            const size = extractSize(item.Nombre);
+            if (size) {
+                if (esCanape(item.Categoria)) {
+                    activeCanapeSize = size;
+                } else if (esColchon(item.Categoria)) {
+                    activeColchonSize = size;
+                }
+            }
+        }
+
+        function updateFilterBanner(isFiltered, size, source, isEmpty) {
+            const banner = document.getElementById('filterBanner');
+            const text = document.getElementById('filterBannerText');
+            const icon = document.getElementById('filterBannerIcon');
+            
+            if (isFiltered && size) {
+                if (isEmpty) {
+                    icon.textContent = "⚠️";
+                    text.innerHTML = `No hay opciones compatibles con la medida del <strong>${source}</strong> (<strong>${size}</strong>).`;
+                } else {
+                    icon.textContent = "📏";
+                    text.innerHTML = `Mostrando solo opciones que coinciden con la medida del <strong>${source}</strong> (<strong>${size}</strong>).`;
+                }
+                banner.classList.remove('hidden');
+            } else {
+                banner.classList.add('hidden');
+            }
+        }
+
+        function updateNombre() {
+            const c1 = document.getElementById('cat1').value;
+            const c2 = document.getElementById('cat2').value;
+            let items = rawData.filter(r => r.Categoria === c1 && (c2 === '(Ninguna)' ? !r['Categoria 2'] : (r['Categoria 2'] === c2)));
+            const standardProfit = getStandardProfit(c1);
+            const el = document.getElementById('nombre');
+
+            const ref = getReferenceSize(c1);
+            let filteredItems = items;
+            let isFiltered = false;
+
+            if (ref && filterEnabled) {
+                filteredItems = items.filter(r => {
+                    const itemSize = extractSize(r.Nombre);
+                    return itemSize === ref.size;
+                });
+                isFiltered = true;
+            }
+
+            if (filteredItems.length > 0) {
+                el.innerHTML = filteredItems.map(r => { 
+                    const price = parseFloat(r.Precio); 
+                    const pvpPrice = !isNaN(price) ? (price + standardProfit) : null; 
+                    const priceText = pvpPrice !== null ? ` (${pvpPrice.toFixed(2)}€)` : ""; 
+                    return `<option value="${r.Nombre}">${r.Nombre}${priceText}</option>`; 
+                }).join('');
+            } else {
+                const refSizeMsg = ref ? ` (${ref.size})` : '';
+                el.innerHTML = `<option value="" disabled selected>No hay medidas compatibles${refSizeMsg}</option>`;
+            }
+
+            updateFilterBanner(isFiltered, ref ? ref.size : null, ref ? ref.source : null, filteredItems.length === 0);
+
+            el.onchange = () => {
+                handleNombreChange();
+                updateExtras();
+            };
+            
+            handleNombreChange();
+            updateExtras();
+        }
+
+        function getSelectedItem() { const c1 = document.getElementById('cat1').value; const c2 = document.getElementById('cat2').value; const nombre = document.getElementById('nombre').value; return rawData.find(r => r.Categoria === c1 && (r['Categoria 2'] || '(Ninguna)') === c2 && r.Nombre === nombre); }
+        function incrementQty() { const input = document.getElementById('cantidad'); input.value = parseInt(input.value || 1) + 1; }
+        function decrementQty() { const input = document.getElementById('cantidad'); const val = parseInt(input.value || 1); if (val > 1) input.value = val - 1; }
+
+        function addToCart() {
+            const item = getSelectedItem();
+            if (!item) return;
+            const cantidad = parseInt(document.getElementById('cantidad').value) || 1;
+            let coste = parseFloat(item.Precio || 0);
+            let detalles = `${item.Categoria} ${item['Categoria 2'] || ''} - ${item.Nombre}`;
+            let tieneMontaje = document.getElementById('montajeGratuito').checked;
+            if (tieneMontaje) document.getElementById('montajeGratuito').checked = false;
+            let colorVal = "";
+            if (!document.getElementById('colorWrapper').classList.contains('hidden')) { colorVal = ` [Color: ${document.getElementById('color').value}]`; detalles += colorVal; }
+            ['1', '2'].forEach(n => { if(!document.getElementById(`ad${n}Wrapper`).classList.contains('hidden') && document.getElementById(`ad${n}`).value === 'Si') { coste += parseFloat(item['Coste adicional '+n] || 0); detalles += ` + ${item['Adicional '+n]}`; } });
+            const existingItem = cart.find(c => c.cat === detalles && c.coste === coste && c.tieneMontaje === tieneMontaje);
+            if (existingItem) existingItem.cantidad += cantidad; else cart.push({ cat: detalles, coste, categoria: item.Categoria, cantidad, manualGan: null, tieneMontaje });
+            document.getElementById('cantidad').value = 1;
+            updateCartUI();
+        }
+
+        function updateCartQty(index, delta) { cart[index].cantidad += delta; if (cart[index].cantidad <= 0) removeFromCart(index); else updateCartUI(); }
+        function removeFromCart(index) { cart.splice(index, 1); updateCartUI(); }
+        function clearCart() { cart = []; updateCartUI(); }
+        function updateManualGanancia(index, totalValue) { const qty = cart[index].cantidad || 1; cart[index].manualGan = (parseFloat(totalValue) || 0) / qty; updateCartUI(); }
+        function setGananciaZero(index) { cart[index].manualGan = 0; updateCartUI(); }
+        function toggleCheckoutForm() { document.getElementById('checkoutForm').classList.toggle('hidden'); document.getElementById('whatsappShareBox').classList.add('hidden'); }
+        function closeShareBox() { document.getElementById('whatsappShareBox').classList.add('hidden'); }
+
+        function generateWhatsAppMessage() {
+            const fields = ['orderStreet', 'orderNumber', 'orderZip', 'orderPhone'];
+            let isValid = true;
+            
+            fields.forEach(id => {
+                const el = document.getElementById(id);
+                if (!el.value.trim()) {
+                    el.classList.add('border-red-500', 'ring-1', 'ring-red-500');
+                    isValid = false;
+                } else {
+                    el.classList.remove('border-red-500', 'ring-1', 'ring-red-500');
+                }
+            });
+
+            if (!isValid) {
+                const err = document.getElementById('checkoutError');
+                err.textContent = "Error: Por favor, completa los campos marcados en rojo.";
+                err.classList.remove('hidden');
+                return;
+            } else {
+                document.getElementById('checkoutError').classList.add('hidden');
+            }
+
+            const street = document.getElementById('orderStreet').value.trim();
+            const num = document.getElementById('orderNumber').value.trim();
+            const floor = document.getElementById('orderFloor').value.trim();
+            const door = document.getElementById('orderDoor').value.trim();
+            const zip = document.getElementById('orderZip').value.trim();
+            const phone = document.getElementById('orderPhone').value.trim();
+
+            let items = [];
+            cart.forEach((cartItem, cartIdx) => { for (let i = 0; i < cartItem.cantidad; i++) items.push({originalIndex: cartIdx, cat: cartItem.cat, coste: cartItem.coste, categoria: cartItem.categoria, manualGan: cartItem.manualGan, autoGan: null, used: false}); });
+            while (true) { let litera = items.find(i => !i.used && esLitera(i.categoria)), col1 = items.find(i => !i.used && esColchon(i.categoria)), col2 = items.find(i => !i.used && esColchon(i.categoria) && i !== col1); if (litera && col1 && col2) { litera.used = true; col1.used = true; col2.used = true; litera.autoGan = 95; col1.autoGan = 0; col2.autoGan = 0; } else break; }
+            while (true) { let comoda = items.find(i => !i.used && esComoda(i.categoria)); if (!comoda) break; let targets = items.filter(i => !i.used && (esCanape(i.categoria) || esColchon(i.categoria) || esCabezal(i.categoria))); if (targets.length > 0) { let targetsInPack = targets.slice(0, 3); comoda.used = true; comoda.autoGan = 10; targetsInPack.forEach((target, index) => { target.used = true; target.autoGan = (index === 0) ? 80 : 0; }); } else break; }
+            while (true) { let canape = items.find(i => !i.used && esCanape(i.categoria)), colchon = items.find(i => !i.used && esColchon(i.categoria)), cabezal = items.find(i => !i.used && esCabezal(i.categoria)); if (canape && colchon && cabezal) { canape.used = true; colchon.used = true; cabezal.used = true; canape.autoGan = 80; colchon.autoGan = 0; cabezal.autoGan = 0; } else break; }
+            while (true) { let foundPair = false, canape = items.find(i => !i.used && esCanape(i.categoria)), colchon = items.find(i => !i.used && esColchon(i.categoria)), cabezal = items.find(i => !i.used && esCabezal(i.categoria)); if (canape && colchon) { canape.used = true; colchon.used = true; canape.autoGan = 80; colchon.autoGan = 0; foundPair = true; } else if (canape && cabezal) { canape.used = true; cabezal.used = true; canape.autoGan = 80; canape.autoGan = 0; foundPair = true; } else if (colchon && cabezal) { colchon.used = true; colchon.used = true; colchon.autoGan = 80; colchon.autoGan = 0; foundPair = true; } if (!foundPair) break; }
+            const conteoPorCategoriaUnidadesLibres = {}; items.forEach(i => { if (!i.used) conteoPorCategoriaUnidadesLibres[i.categoria] = (conteoPorCategoriaUnidadesLibres[i.categoria] || 0) + 1; });
+            items.forEach(i => { if (!i.used && conteoPorCategoriaUnidadesLibres[i.categoria] >= 3) { i.used = true; i.autoGan = esArmario(i.categoria) ? 80 : 60; } });
+            items.forEach(i => { if (i.autoGan === null) i.autoGan = getStandardProfit(i.categoria); });
+            let totalGananciaGlobal = 0; cart.forEach((cartItem, idx) => { items.filter(f => f.originalIndex === idx).forEach(f => { totalGananciaGlobal += f.manualGan !== null ? f.manualGan : f.autoGan; }); });
+            const tc = cart.reduce((a, b) => a + (b.coste * b.cantidad), 0);
+            const totalPresupuestoPVP = tc + totalGananciaGlobal;
+
+            let msg = `*🛍️ RESUMEN DE TU PEDIDO*\n-------------------------------------------\n\n*📦 Productos:*\n`;
+            cart.forEach(cartItem => { msg += `• [x${cartItem.cantidad}] ${cartItem.cat}\n`; });
+            msg += `\n*📍 Dirección:* ${street}, ${num}${floor ? ', Piso ' + floor : ''}${door ? ', Puerta ' + door : ''}\n*📮 C.P.:* ${zip}\n*📞 Teléfono:* ${phone}\n`;
+            if (cart.some(c => c.tieneMontaje)) msg += `\n*🛠️ Montaje:* Incluido\n`;
+            msg += `\n-------------------------------------------\n*💵 TOTAL DE LA COMPRA (PVP): ${totalPresupuestoPVP.toFixed(2)}€*\n-------------------------------------------`;
+
+            document.getElementById('whatsappMessageContent').textContent = msg;
+            const shareBox = document.getElementById('whatsappShareBox');
+            shareBox.classList.remove('hidden');
+            shareBox.scrollIntoView({ behavior: 'smooth' });
+        }
+
+        function copyToClipboard() { const textToCopy = document.getElementById('whatsappMessageContent').textContent; const tempTextArea = document.createElement("textarea"); tempTextArea.value = textToCopy; tempTextArea.style.top = "0"; tempTextArea.style.left = "0"; tempTextArea.style.position = "fixed"; document.body.appendChild(tempTextArea); tempTextArea.focus(); tempTextArea.select(); try { const successful = document.execCommand('copy'); if (successful) { const alertDiv = document.getElementById('copySuccessAlert'); alertDiv.classList.remove('hidden'); setTimeout(() => { alertDiv.classList.add('hidden'); }, 3000); } } catch (err) {} document.body.removeChild(tempTextArea); }
+        function openWhatsAppWeb() { const textToCopy = document.getElementById('whatsappMessageContent').textContent; const encodedText = encodeURIComponent(textToCopy); const phone = document.getElementById('orderPhone').value.trim().replace(/\s+/g, ''); let url = `https://wa.me/?text=${encodedText}`; if (phone) { const cleanPhone = phone.replace(/[^0-9+]/g, ''); url = `https://wa.me/${cleanPhone}?text=${encodedText}`; } window.open(url, '_blank'); }
+
+        function updateCartUI() {
+            document.getElementById('cartSection').classList.toggle('hidden', cart.length === 0);
+            let items = [];
+            cart.forEach((cartItem, cartIdx) => { for (let i = 0; i < cartItem.cantidad; i++) items.push({originalIndex: cartIdx, cat: cartItem.cat + (cartItem.tieneMontaje ? " [+ Montaje]" : ""), coste: cartItem.coste, categoria: cartItem.categoria, manualGan: cartItem.manualGan, autoGan: null, packInfo: null, used: false}); });
+            while (true) { let litera = items.find(i => !i.used && esLitera(i.categoria)), col1 = items.find(i => !i.used && esColchon(i.categoria)), col2 = items.find(i => !i.used && esColchon(i.categoria) && i !== col1); if (litera && col1 && col2) { litera.used = true; col1.used = true; col2.used = true; litera.autoGan = 95; col1.autoGan = 0; col2.autoGan = 0; litera.packInfo = "Pack Litera + 2 Colchones (95€ ganancia)"; col1.packInfo = "Pack Litera + 2 Colchones (Incluido)"; col2.packInfo = "Pack Litera + 2 Colchones (Incluido)"; } else break; }
+            while (true) { let comoda = items.find(i => !i.used && esComoda(i.categoria)); if (!comoda) break; let targets = items.filter(i => !i.used && (esCanape(i.categoria) || esColchon(i.categoria) || esCabezal(i.categoria))); if (targets.length > 0) { let targetsInPack = targets.slice(0, 3); comoda.used = true; comoda.autoGan = 10; comoda.packInfo = "Pack Cómoda (10€)"; targetsInPack.forEach((target, index) => { target.used = true; target.autoGan = (index === 0) ? 80 : 0; target.packInfo = "Pack Cómoda + " + target.categoria + " (80€)"; }); } else break; }
+            while (true) { let canape = items.find(i => !i.used && esCanape(i.categoria)), colchon = items.find(i => !i.used && esColchon(i.categoria)), cabezal = items.find(i => !i.used && esCabezal(i.categoria)); if (canape && colchon && cabezal) { canape.used = true; colchon.used = true; cabezal.used = true; canape.autoGan = 80; colchon.autoGan = 0; cabezal.autoGan = 0; canape.packInfo = "Pack 3 Elementos (80€)"; colchon.packInfo = "Pack 3 Elementos (Incluido)"; cabezal.packInfo = "Pack 3 Elementos (Incluido)"; } else break; }
+            while (true) { let foundPair = false, canape = items.find(i => !i.used && esCanape(i.categoria)), colchon = items.find(i => !i.used && esColchon(i.categoria)), cabezal = items.find(i => !i.used && esCabezal(i.categoria)); if (canape && colchon) { canape.used = true; colchon.used = true; canape.autoGan = 80; colchon.autoGan = 0; canape.packInfo = "Pack 2 Elementos (80€)"; colchon.packInfo = "Pack 2 Elementos (Incluido)"; foundPair = true; } else if (canape && cabezal) { canape.used = true; cabezal.used = true; canape.autoGan = 80; colchon.autoGan = 0; canape.packInfo = "Pack 2 Elementos (80€)"; cabezal.packInfo = "Pack 2 Elementos (Incluido)"; foundPair = true; } else if (colchon && cabezal) { colchon.used = true; colchon.used = true; colchon.autoGan = 80; colchon.autoGan = 0; colchon.packInfo = "Pack 2 Elementos (80€)"; colchon.packInfo = "Pack 2 Elementos (Incluido)"; foundPair = true; } if (!foundPair) break; }
+            const conteoPorCategoriaUnidadesLibres = {}; items.forEach(i => { if (!i.used) conteoPorCategoriaUnidadesLibres[i.categoria] = (conteoPorCategoriaUnidadesLibres[i.categoria] || 0) + 1; });
+            items.forEach(i => { if (!i.used && conteoPorCategoriaUnidadesLibres[i.categoria] >= 3) { i.used = true; const esArm = esArmario(i.categoria); i.autoGan = esArm ? 80 : 60; i.packInfo = `Pack +3 Unidades (${i.autoGan}€)`; } });
+            items.forEach(i => { if (i.autoGan === null) i.autoGan = getStandardProfit(i.categoria); });
+            let filasDesktop = [], filasMobile = [], totalGananciaGlobal = 0;
+            
+            cart.forEach((cartItem, idx) => {
+                const matchingFlat = items.filter(f => f.originalIndex === idx);
+                let totalGananciaFila = 0, packInfos = [];
+                matchingFlat.forEach(f => { totalGananciaFila += (f.manualGan !== null ? f.manualGan : f.autoGan); if (f.packInfo) packInfos.push(f.packInfo); });
+                totalGananciaGlobal += totalGananciaFila;
+                const costeTotalFila = cartItem.coste * cartItem.cantidad;
+                
+                filasDesktop.push(`
+                    <tr class="hover:bg-slate-50/50 dark:hover:bg-zinc-800/30 transition duration-150">
+                        <td class="py-4 px-4 text-sm text-slate-800 dark:text-zinc-200 font-medium">
+                            ${cartItem.cat} 
+                            ${cartItem.tieneMontaje ? '<span class="text-[10px] font-bold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/20 px-1.5 py-0.5 rounded border border-blue-100 dark:border-blue-900/35 uppercase ml-1">Montaje</span>' : ''}
+                        </td>
+                        <td class="py-4 px-4 text-center">
+                            <div class="inline-flex items-center h-9 border border-slate-200 dark:border-zinc-700 rounded-lg bg-white dark:bg-zinc-800 shadow-sm overflow-hidden mx-auto">
+                                <button type="button" onclick="updateCartQty(${idx}, -1)" class="w-8 h-full flex items-center justify-center text-slate-600 dark:text-zinc-400 hover:bg-slate-100 dark:hover:bg-zinc-700 font-bold text-sm select-none border-r border-slate-200 dark:border-zinc-700">-</button>
+                                <span class="w-8 text-center font-bold text-xs text-slate-800 dark:text-zinc-250">${cartItem.cantidad}</span>
+                                <button type="button" onclick="updateCartQty(${idx}, 1)" class="w-8 h-full flex items-center justify-center text-slate-600 dark:text-zinc-400 hover:bg-slate-100 dark:hover:bg-zinc-700 font-bold text-sm select-none border-l border-slate-200 dark:border-zinc-700">+</button>
+                            </div>
+                        </td>
+                        <td class="py-4 px-4 text-sm text-slate-600 dark:text-zinc-400 font-semibold">${costeTotalFila.toFixed(2)}€</td>
+                        <td class="py-4 px-4">
+                            <div class="flex items-center gap-1.5">
+                                <input type="number" value="${totalGananciaFila}" onchange="updateManualGanancia(${idx}, this.value)" class="w-24 p-1.5 border text-sm rounded-lg ${packInfos.length > 0 ? 'bg-green-50 dark:bg-green-950/20 text-green-700 dark:text-green-300 border-green-200 dark:border-green-900/40' : 'bg-white dark:bg-zinc-800 border-slate-200 dark:border-zinc-700 text-slate-800 dark:text-zinc-100'}">
+                                <button onclick="setGananciaZero(${idx})" class="bg-slate-100 dark:bg-zinc-800 hover:bg-red-100 dark:hover:bg-red-950/40 text-slate-500 dark:text-zinc-400 p-1.5 rounded-lg text-xs font-extrabold w-8 h-8 flex items-center justify-center border border-slate-200 dark:border-zinc-700">0</button>
+                            </div>
+                        </td>
+                        <td class="py-4 px-4 text-center">
+                            <button onclick="removeFromCart(${idx})" class="text-slate-400 dark:text-zinc-500 hover:text-red-600 dark:hover:text-red-400 font-bold transition text-2xl">×</button>
+                        </td>
+                    </tr>
+                `);
+                
+                filasMobile.push(`
+                    <div class="bg-white dark:bg-zinc-900 p-4 rounded-xl border border-slate-200 dark:border-zinc-800 shadow-sm space-y-3.5">
+                        <div class="flex justify-between items-start gap-2">
+                            <div class="space-y-1.5">
+                                <p class="text-sm font-bold text-slate-800 dark:text-zinc-200">
+                                    ${cartItem.cat}
+                                    ${cartItem.tieneMontaje ? ' <span class="text-[10px] font-bold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/20 px-1.5 py-0.5 rounded border border-blue-100 dark:border-blue-900/35 uppercase">Montaje</span>' : ''}
+                                </p>
+                            </div>
+                            <button onclick="removeFromCart(${idx})" class="text-slate-400 dark:text-zinc-500 hover:text-red-600 dark:hover:text-red-400 font-bold text-2xl p-1">×</button>
+                        </div>
+                        <div class="grid grid-cols-2 gap-3 pt-2 border-t border-slate-100 dark:border-zinc-800">
+                            <div>
+                                <span class="block text-[11px] text-slate-400 dark:text-zinc-500 uppercase font-bold mb-1">Cantidad</span>
+                                <div class="flex items-center h-10 w-full border border-slate-200 dark:border-zinc-700 rounded-lg bg-white dark:bg-zinc-800">
+                                    <button type="button" onclick="updateCartQty(${idx}, -1)" class="flex-1 h-full flex items-center justify-center text-slate-600 dark:text-zinc-400 hover:bg-slate-100 dark:hover:bg-zinc-700 font-bold">-</button>
+                                    <span class="w-10 text-center font-bold text-xs text-slate-800 dark:text-zinc-250">${cartItem.cantidad}</span>
+                                    <button type="button" onclick="updateCartQty(${idx}, 1)" class="flex-1 h-full flex items-center justify-center text-slate-600 dark:text-zinc-400 hover:bg-slate-100 dark:hover:bg-zinc-700 font-bold">+</button>
+                                </div>
+                            </div>
+                            <div>
+                                <span class="block text-[11px] text-slate-400 dark:text-zinc-500 uppercase font-bold mb-1">Coste Total</span>
+                                <div class="h-10 flex items-center text-sm font-semibold text-slate-700 dark:text-zinc-300 bg-slate-50 dark:bg-zinc-800/40 px-3 rounded-lg border border-slate-200 dark:border-zinc-700">${costeTotalFila.toFixed(2)}€</div>
+                            </div>
+                        </div>
+                    </div>
+                `);
+            });
+            document.getElementById('cartTableBody').innerHTML = filasDesktop.join('');
+            document.getElementById('cartMobileContainer').innerHTML = filasMobile.join('');
+            const tc = cart.reduce((a, b) => a + (b.coste * b.cantidad), 0);
+            document.getElementById('subtotalCostes').textContent = `${tc.toFixed(2)}€`;
+            document.getElementById('subtotalGanancias').textContent = `${totalGananciaGlobal.toFixed(2)}€`;
+            document.getElementById('totalPresupuesto').textContent = `${(tc + totalGananciaGlobal).toFixed(2)}€`;
+
+            if (rawData && rawData.length > 0) {
+                updateNombre();
+            }
+        }
+    </script>
+</body>
+</html>
